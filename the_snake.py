@@ -260,7 +260,8 @@ def handle_keys(game_object):
         if event.type == pygame.QUIT:
             k_escape_event(game_object)
         elif event.type == pygame.KEYDOWN:
-            key_functions[event.key](game_object)
+            if event.key in key_functions.keys():
+                key_functions[event.key](game_object)
 
 
 def check_figs(snake, *figs):
