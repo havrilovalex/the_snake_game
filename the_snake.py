@@ -89,7 +89,6 @@ class Snake(GameObject):
         стены, скорость игры и количество инжиров
         """
         super().__init__(body_color, object_position)
-        self.positions = [self.position]
         self.next_direction = next_direction
         self.last = None
         self.difficulty = 1
@@ -232,14 +231,10 @@ def k_up_event(game_object, key):
 
 def k_1_event(game_object, key):
     """Установить 1 сложность. Инжиров - 1. Нет стены. Скорость 10."""
-    game_object.difficulty = 1
-    screen.fill(BOARD_BACKGROUND_COLOR)
-    game_object.reset()
-
-
-def k_2_event(game_object, key):
-    """Установить 2 сложность. Инжиров - 3. Стена. Скорость 20."""
-    game_object.difficulty = 2
+    if key == pg.K_1:
+        game_object.difficulty = 1
+    elif key == pg.K_2:
+        game_object.difficulty = 2
     screen.fill(BOARD_BACKGROUND_COLOR)
     game_object.reset()
 
@@ -253,7 +248,7 @@ key_functions = {
     pg.K_LEFT: k_up_event,
     pg.K_RIGHT: k_up_event,
     pg.K_1: k_1_event,
-    pg.K_2: k_2_event
+    pg.K_2: k_1_event
 }
 
 
