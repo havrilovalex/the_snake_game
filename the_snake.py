@@ -59,7 +59,8 @@ class GameObject:
 
     def draw(self):
         """Заготовка под наследуемый метод."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            f'{self.__class__.__name__} object method is not implemented')
 
     def draw_rect(self, position, color=BOARD_BACKGROUND_COLOR):
         """Отрисовка прямоугольника в заданной позиции и заданного цвета"""
@@ -87,9 +88,8 @@ class Snake(GameObject):
         Атрибут difficulty - текущий уровень сложности игры, влияет на наличие
         стены, скорость игры и количество инжиров
         """
-        super().__init__()
-        self.positions = [object_position]
-        self.body_color = body_color
+        super().__init__(body_color, object_position)
+        self.positions = [self.position]
         self.next_direction = next_direction
         self.last = None
         self.difficulty = 1
@@ -98,16 +98,17 @@ class Snake(GameObject):
     def draw(self):
         """Метод визуализации змейки и стирания ее хвоста при движении."""
         # Отрисовка головы
-        self.draw_rect(self.positions[0], BORDER_COLOR)
+        self.draw_rect(self.get_head_position(), BORDER_COLOR)
         # Закрашивание последнего квадрата для сим-ии движения
         if self.last:
             last_rect = pg.Rect(self.last, (GRID_SIZE, GRID_SIZE))
             pg.draw.rect(screen, BOARD_BACKGROUND_COLOR, last_rect)
-        # Проверка на поедание инжира
-        while len(self.positions) > self.length:
-            dropped_tail = pg.Rect(
-                self.positions.pop(), (GRID_SIZE, GRID_SIZE))
-            pg.draw.rect(screen, BOARD_BACKGROUND_COLOR, dropped_tail)
+
+    def delete_dropped_tail(self):
+        """Метод удаляет потерянный хвост при поедании инжира."""
+        dropped_tail = pg.Rect(self.positions.pop(),
+                               (GRID_SIZE, GRID_SIZE))
+        pg.draw.rect(screen, BOARD_BACKGROUND_COLOR, dropped_tail)
 
     def update_direction(self):
         """Метод для обновления направления змейки."""
@@ -129,7 +130,10 @@ class Snake(GameObject):
         # Вставляем новую голову змейки в начало списка
         self.positions.insert(0, new_head_position)
         # Назначаем квадратик, который предстоит стереть
-        self.last = self.positions[-1]
+        self.last = self.positions[-1] if len(
+            self.positions) > self.length else None
+        while len(self.positions) > self.length:
+            self.delete_dropped_tail()
 
     def get_head_position(self):
         """Метод возвращает позицию головы змейки."""
@@ -145,20 +149,20 @@ class Snake(GameObject):
 class Apple(GameObject):
     """Класс Яблока - полезная еда, увеличивающая длину змейки на 1."""
 
-    def __init__(self, color=APPLE_COLOR, occupied_cells=SCREEN_MIDDLE):
+    def __init__(self, color=APPLE_COLOR, occupied_cells=None):
         """Метод инициализации экземпляра класса."""
-        super().__init__()
-        self.body_color = color
+        if occupied_cells is None:
+            occupied_cells = []
+        super().__init__(color)
         self.randomize_position(occupied_cells=occupied_cells)
 
     def randomize_position(self, occupied_cells=[SCREEN_MIDDLE]):
         """Метод задания случайных координат в пределах игрового поля."""
-        coordinates = (randrange(20, SCREEN_WIDTH, 20),
-                       randrange(20, SCREEN_HEIGHT, 20))
-        while coordinates in occupied_cells:
-            coordinates = (randrange(20, SCREEN_WIDTH, 20),
-                           randrange(20, SCREEN_HEIGHT, 20))
-        self.position = coordinates
+        self.position = (randrange(GRID_SIZE, SCREEN_WIDTH, GRID_SIZE),
+                         randrange(GRID_SIZE, SCREEN_HEIGHT, GRID_SIZE))
+        while self.position in occupied_cells:
+            self.position = (randrange(GRID_SIZE, SCREEN_WIDTH, GRID_SIZE),
+                             randrange(GRID_SIZE, SCREEN_HEIGHT, GRID_SIZE))
 
     def draw(self):
         """Метод визуализации яблока."""
@@ -168,20 +172,22 @@ class Apple(GameObject):
 class Fig(Apple):
     """Класс Инжир - вредная еда, уменьшающая длину змейки на 1."""
 
-    def __init__(self, color=FIG_COLOR):
+    def __init__(self, color=FIG_COLOR, occupied_cells=None):
         """Метод инициализации экземпляра класса."""
-        super().__init__()
-        self.body_color = color
-        self.randomize_position()
+        if occupied_cells is None:
+            occupied_cells = []
+        super().__init__(color)
+        self.randomize_position(occupied_cells=occupied_cells)
 
 
 class StoneWall(Apple):
     """Класс каменная стена - препятствие, при столкновении обнуляет игру."""
 
-    def __init__(self, color=WALL_COLOR):
+    def __init__(self, color=WALL_COLOR, occupied_cells=None):
         """Метод инициализации экземпляра класса."""
-        super().__init__()
-        self.body_color = color
+        if occupied_cells is None:
+            occupied_cells = []
+        super().__init__(color)
         # Выбираем случайное направление стены
         self.choose_direction()
         # Удлинняем стену в выбранном направлении
@@ -189,7 +195,7 @@ class StoneWall(Apple):
             (self.position[0] + self.direction[0] * GRID_SIZE * i,
              self.position[1] + self.direction[1] * GRID_SIZE * i
              ) for i in range(9)]
-        self.randomize_position()
+        self.randomize_position(occupied_cells=occupied_cells)
 
     def choose_direction(self):
         """Выбираем случайное направление для стены в координатах поля."""
@@ -212,7 +218,7 @@ def k_escape_event(game_object):
 
 
 def k_up_event(game_object, key):
-    """функция при нажатии клавиши UP."""
+    """Функция при нажатии клавиши UP."""
     if key == pg.K_UP and game_object.direction != DOWN:
         game_object.next_direction = UP
     if key == pg.K_DOWN and game_object.direction != UP:
@@ -261,70 +267,101 @@ def handle_keys(game_object):
                 key_functions[event.key](game_object, event.key)
 
 
-def check_figs(snake, *figs):
+def check_figs(snake, figs):
     """Вспомогательная функция для цикла игры, проверяет поедание инжира."""
     for fig in figs:
-        if snake.positions[0] == fig.position:
+        if snake.get_head_position() == fig.position:
             if snake.length > 1:
                 snake.length -= 1
             fig.randomize_position(snake.positions)
 
 
-def game_cycle_decorator(func):
-    """Декоратор общих для всех уровней слонжости действий цикла игры."""
-    def wrapper(object_snake, object_fig1, object_fig2, object_fig3,
-                object_stone_wall, object_apple, game_speed):
-        result = func(object_snake, object_fig1, object_fig2, object_fig3,
-                      object_stone_wall, object_apple, game_speed)
-        handle_keys(object_snake)
-        object_snake.move()
-        # Проверка "Съели яблоко"
-        if object_snake.get_head_position() == object_apple.position:
-            object_snake.length += 1
-            object_apple.randomize_position(object_snake.positions)
-        # Проверка "Столкнулись с собой"
-        elif object_snake.get_head_position() in object_snake.positions[3:]:
-            screen.fill(BOARD_BACKGROUND_COLOR)
-            object_snake.reset()
-        # Проверка на плохую еду
-        check_figs(object_snake, object_fig1, object_fig2, object_fig3)
-        object_snake.draw()
-        object_apple.draw()
-        object_fig1.draw()
-        pg.display.update()
-        return result
-    return wrapper
-
-
-@game_cycle_decorator
-def game_cycle_easy(object_snake, object_fig1, object_fig2, object_fig3,
-                    object_stone_wall, object_apple, game_speed):
-    """Цикл игры при сложности 1."""
-    if object_fig2:
-        del object_fig2
-        del object_fig3
-        del object_stone_wall
-    clock.tick(game_speed - 10)
-    # Убираем доп инжиры и стену с карты пока сложность низкая
-
-
-@game_cycle_decorator
-def game_cycle_hard(object_snake, object_fig1, object_fig2, object_fig3,
-                    object_stone_wall, object_apple, game_speed):
-    """Цикл игры при сложности 2."""
-    clock.tick(game_speed)
-    # Возвращаем доп инжиры, пока сложность высокая
-    if not object_fig2:
-        object_fig2 = Fig()
-        object_fig3 = Fig()
-        object_stone_wall = StoneWall()
-    # Проверяем столкновение со стеной
-    if object_snake.positions[0] in object_stone_wall.positions:
+def check_wall_bump(snake, stone_wall):
+    """Функция проверки столкновения со стеной."""
+    if snake.get_head_position() in stone_wall.positions:
         screen.fill(BOARD_BACKGROUND_COLOR)
-        object_snake.reset()
-    object_fig2.draw()
-    object_fig3.draw()
-    object_stone_wall.draw()
+        snake.reset()
+
+
+def draw_objects(*args):
+    """функция рисует перечисленные объекты."""
+    for object in args:
+        object.draw()
+
+
+def get_occupied_positions(*args):
+    """Функция возвращает список занятых в данный момент клеток."""
+    res = []
+    for object in args:
+        if hasattr(object, 'positions'):
+            res += object.positions
+        elif object is None:
+            continue
+        elif isinstance(object, list):
+            res += object
+        else:
+            res.append(object.position)
+    return res
+
+
+def check_snake_events(snake, apple, *objects):
+    """Функция проверяет столкновение с собой и поедание яблока"""
+    objects = list(objects)
+    if snake.get_head_position() == apple.position:
+        snake.length += 1
+        apple.randomize_position(occupied_cells=get_occupied_positions(
+            snake, *objects))
+        # Проверка "Столкнулись с собой"
+    elif snake.get_head_position() in snake.positions[4:]:
+        screen.fill(BOARD_BACKGROUND_COLOR)
+        snake.reset()
+
+
+def game_cycle_body(snake, apple, *figs, stone_wall=None):
+    """
+    Функция исполняет основные события игрового цикла - проверку ввода игрока,
+    движение змейки,  проверка событий игры и отрисовка объектов.
+    """
+    figs = list(figs)
+    handle_keys(snake)
+    snake.move()
+    check_snake_events(snake, apple, stone_wall, figs)
+    check_figs(snake, figs)
+    draw_objects(snake, apple, figs[0])
+
+
+def game_cycle_easy(snake, fig1, apple, game_speed):
+    """Цикл игры при сложности 1."""
+    while True:
+        clock.tick(game_speed - 10)
+        game_cycle_body(snake, apple, fig1)
+        if snake.difficulty == 2:
+            break
+        pg.display.update()
+    stone_wall = StoneWall(occupied_cells=get_occupied_positions(
+        snake, apple, fig1))
+    fig2 = Fig(occupied_cells=get_occupied_positions(
+        snake, apple, fig1, stone_wall))
+    fig3 = Fig(occupied_cells=get_occupied_positions(
+        snake, apple, fig1, fig2, stone_wall))
+    game_cycle_hard(snake, fig1, fig2, fig3, stone_wall, apple, game_speed)
+
+
+def game_cycle_hard(snake, fig1, fig2, fig3,
+                    stone_wall, apple, game_speed):
+    """Цикл игры при сложности 2."""
+    while True:
+        clock.tick(game_speed)
+        check_wall_bump(snake, stone_wall)
+        draw_objects(fig2, fig3, stone_wall)
+        game_cycle_body(snake, apple, fig1, fig2, fig3, stone_wall=stone_wall)
+        if snake.difficulty == 1:
+            del fig2
+            del fig3
+            del stone_wall
+            break
+        pg.display.update()
+    game_cycle_easy(snake, fig1, apple, game_speed)
 
 
 def main():
@@ -333,21 +370,12 @@ def main():
     pg.init()
     # Создаем объекты классов
     snake = Snake()
-    apple = Apple(occupied_cells=snake.positions)
-    fig1 = Fig()
-    fig2 = Fig()
-    fig3 = Fig()
-    stonewall = StoneWall()
+    apple = Apple(occupied_cells=get_occupied_positions(snake))
+    fig1 = Fig(occupied_cells=get_occupied_positions(snake, apple))
     # Располагаем и отрисовываем основные объекты на экране
-    snake.draw()
-    apple.draw()
-    fig1.draw()
+    draw_objects(snake, apple, fig1)
     # Входим в основной цикл игры
-    while True:  # При каждом шаге цикла идет проверка уровня сложности
-        if snake.difficulty == 1:
-            game_cycle_easy(snake, fig1, fig2, fig3, stonewall, apple, SPEED)
-        elif snake.difficulty == 2:
-            game_cycle_hard(snake, fig1, fig2, fig3, stonewall, apple, SPEED)
+    game_cycle_easy(snake, fig1, apple, SPEED)
 
 
 if __name__ == '__main__':
